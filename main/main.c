@@ -11,8 +11,8 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
-//---------------------MPU6050传感器部分-----------------------------------
 
+// MPU6050 相关
 #define MPU6050_ADDR        0x68   // I2C 地址（AD0 接地）
 #define I2C_MASTER_NUM      0      // 使用 I2C 控制器 0
 
@@ -23,6 +23,59 @@
 static i2c_master_bus_handle_t bus_handle;  // I2C 总线句柄
 static i2c_master_dev_handle_t dev_handle;  // MPU6050 设备句柄
 
+// WiFi 配置
+#define WIFI_SSID_STA      "DragonG"
+#define WIFI_PASS_STA      "lrt13729011089"
+
+// ST7789 相关
+#define MOSI_PIN GPIO_NUM_11    // SPI MOSI (SDA)
+#define SCLK_PIN GPIO_NUM_12    // SPI SCLK (时钟)
+#define RES_PIN  GPIO_NUM_6     // 复位
+#define DC_PIN   GPIO_NUM_7     // 数据/命令
+
+#define SPI_PORT SPI3_HOST
+#define MAX_SPI_TRANSFER_SIZE 4096
+
+#define WIDTH  240
+#define HEIGHT 240
+
+static spi_device_handle_t spi = NULL;// SPI 句柄
+
+// MQTT 部分
+#define MQTT_URI         "mqtt://192.168.5.109:1883"
+#define MQTT_TOPIC       "6050_date"       // 发送6050数据主题
+#define MQTT_TOPIC_IMAGE "6818_image"    // 图像数据主题
+#define MQTT_CLIENT_ID   "esp32s3_Client" //客户端标识符
+#define MQTT_QUEUE_LENGTH 5  // MQTT 队列长度
+
+// #define MQTT_USERNAME    "mymqtt"
+// #define MQTT_PASSWORD    "138248"
+
+typedef struct {
+    int16_t x;
+    int16_t y;
+    int16_t z;
+}MPUdata;
+
+typedef struct {
+    float angle_x;
+    float angle_y;
+    float angle_z;
+} mqtt_payload_t;
+
+static QueueHandle_t mqtt_queue; // MQTT 消息队列
+static esp_mqtt_client_handle_t mqtt_client = NULL;
+
+// 图像数据尺寸：240 * 240，16位RGB（2字节/像素）
+#define IMG_WIDTH   240 //  图像宽度
+#define IMG_HEIGHT  240 //  图像高度
+#define IMG_BPP     2 //  每像素字节数
+#define EXPECTED_IMG_SIZE  (IMG_WIDTH * IMG_HEIGHT * IMG_BPP) //  预期图像大小
+static uint8_t image_buffer[EXPECTED_IMG_SIZE]; // 图像数据缓存
+static size_t received_bytes = 0; // 已接收字节数
+static bool receiving_image = false; // 接收状态标志
+
+//---------------------MPU6050初始化-----------------------------------
 //I2C初始化
 void i2c_init() {
     i2c_master_bus_config_t bus_cfg = {
@@ -45,11 +98,9 @@ void mpu6050_init() {
         .scl_speed_hz = CONFIG_I2C_MASTER_FREQ_HZ,
     };
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
-
-    // 唤醒设备（向 0x6B 寄存器写 0x00）
-    uint8_t wakeup_cmd[] = {0x6B, 0x00};
+    // 唤醒设备
+    uint8_t wakeup_cmd[] = {0x6B, 0x00};// 向 0x6B 寄存器写 0x00
     ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, wakeup_cmd, sizeof(wakeup_cmd), -1));
-
     // 可选：配置量程（默认 ±2g 和 ±250°/s）
     // uint8_t accel_config[] = {0x1C, 0x00}; // ±2g
     // uint8_t gyro_config[] = {0x1B, 0x00};  // ±250°/s
@@ -57,34 +108,48 @@ void mpu6050_init() {
     // i2c_master_transmit(dev_handle, gyro_config, sizeof(gyro_config), -1);
 }
 
-// 读取原始数据（加速度、陀螺仪、温度）
-void mpu6050_read_raw(int16_t *accel, int16_t *gyro, int16_t *temp) {
-    // 从寄存器 0x3B 开始读取 14 字节
-    uint8_t reg_addr = 0x3B;
-    uint8_t data[14];
+//---------------------MPU6050数据采集-----------------------------------
+//读取陀螺仪数据
+void read_gyro_data(int16_t* gyro_x, int16_t* gyro_y, int16_t* gyro_z) {
+    uint8_t reg_addr = 0x43;  // 陀螺仪数据起始地址
+    uint8_t data[6];
+    // 读取 6 字节陀螺仪数据
     ESP_ERROR_CHECK(i2c_master_transmit_receive(
         dev_handle, 
-        &reg_addr, 1,          // 发送寄存器地址
-        data, sizeof(data),     // 接收数据
+        &reg_addr, 1,      // 发送寄存器地址
+        data, sizeof(data),// 接收数据
         -1
     ));
-
-    // 解析数据（高位在前）
-    accel[0] = (data[0] << 8) | data[1];  // X 加速度
-    accel[1] = (data[2] << 8) | data[3];  // Y 加速度
-    accel[2] = (data[4] << 8) | data[5];  // Z 加速度
-    *temp    = (data[6] << 8) | data[7];  // 温度
-    gyro[0]  = (data[8] << 8) | data[9];  // X 陀螺仪
-    gyro[1]  = (data[10] << 8) | data[11];// Y 陀螺仪
-    gyro[2]  = (data[12] << 8) | data[13];// Z 陀螺仪（修正旧代码错误）
+    *gyro_x = (data[0] << 8) | data[1];
+    *gyro_y = (data[2] << 8) | data[3];
+    *gyro_z = (data[4] << 8) | data[5];
 }
 
+// 计算陀螺仪偏置
+void calibrate_gyro(int16_t *bias_x, int16_t *bias_y, int16_t *bias_z) {
+    int16_t temp_x, temp_y, temp_z;
+    *bias_x = 0;
+    *bias_y = 0;
+    *bias_z = 0;
+    // 多次读取陀螺仪数据以计算偏置
+    for (int i = 0; i < 100; i++) {
+        read_gyro_data(&temp_x, &temp_y, &temp_z);
+        *bias_x += temp_x;
+        *bias_y += temp_y;
+        *bias_z += temp_z;
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+    *bias_x /= 100;
+    *bias_y /= 100;
+    *bias_z /= 100;
+}
 
+// 计算旋转角度（积分）
+float calculate_angle(float previous_angle, float gyro_rate, float dt) {
+    return previous_angle + gyro_rate * dt;
+}
 
 //---------------------WIFI配置部分-----------------------------------
-#define WIFI_SSID_STA      "DragonG"
-#define WIFI_PASS_STA      "lrt13729011089"
-
 // Wi-Fi 事件处理函数
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     int32_t event_id, void *event_data) {
@@ -110,18 +175,14 @@ void wifi_init_sta() {
     ESP_ERROR_CHECK(nvs_flash_init());
     esp_netif_init();
     esp_event_loop_create_default();
-
     // 仅创建 STA 的网络接口
     esp_netif_create_default_wifi_sta();
-
     // 初始化 Wi-Fi
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
     // 注册事件处理器
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL));
-
     // 配置 STA 参数
     wifi_config_t wifi_config = {
         .sta = {
@@ -130,7 +191,6 @@ void wifi_init_sta() {
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         }
     };
-
     // 设置模式为仅 STA
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
@@ -138,23 +198,6 @@ void wifi_init_sta() {
     ESP_LOGI("WiFi_STA", "STA 模式初始化完成");
 }
 //--------------------- ST7789 与 SPI 配置 --------------------------------------------
-
-// ST7789 控制引脚定义
-#define MOSI_PIN GPIO_NUM_11    // SPI MOSI (SDA)
-#define SCLK_PIN GPIO_NUM_12    // SPI SCLK (时钟)
-#define RES_PIN  GPIO_NUM_6     // 复位
-#define DC_PIN   GPIO_NUM_7     // 数据/命令
-
-// SPI 总线相关
-#define SPI_PORT SPI3_HOST
-#define MAX_SPI_TRANSFER_SIZE 4096
-
-// 显示尺寸（与 MQTT 图像数据尺寸匹配）
-#define WIDTH  240
-#define HEIGHT 240
-
-// 声明 SPI 设备句柄
-static spi_device_handle_t spi = NULL;
 
 // 初始化 ST7789 控制的 GPIO（DC 与 RES）
 void st7789_gpio_init(void) {
@@ -268,10 +311,11 @@ void st7789_clear_screen(uint16_t color) {
 
     // 准备一行数据缓冲区（每个像素 2 字节）
     uint8_t line_buffer[WIDTH * 2];
-    uint8_t color_data[2] = { (uint8_t)(color >> 8), (uint8_t)(color & 0xFF) };
-    color_data[0] ^= 0xFF;
-    color_data[1] ^= 0xFF;
 
+    //必须如此才正常显示
+    uint8_t color_data[2] = {(uint8_t)(color >> 8),(uint8_t)(color & 0xFF)};
+    color_data[0] ^= 0xFF;
+    color_data[1] ^= 0xFF;    
 
     for (int i = 0; i < WIDTH; i++) {
         memcpy(&line_buffer[i * 2], color_data, 2);
@@ -283,7 +327,7 @@ void st7789_clear_screen(uint16_t color) {
     }
 }
 
-// 绘制图像函数：将 240x240 的 16 位 RGB 数据分块发送到 ST7789
+// 绘制图像函数
 void st7789_draw_image(const uint16_t *image_data, int width, int height) {
     // 设置列地址
     uint8_t col_addr_cmd[4] = {0x00, 0x00, 0x00, (uint8_t)(width - 1)};
@@ -298,12 +342,23 @@ void st7789_draw_image(const uint16_t *image_data, int width, int height) {
     // 发送写内存命令
     st7789_write_command(0x2C);
 
-    size_t total_bytes = width * height * sizeof(uint16_t);
-    const uint8_t *data_ptr = (const uint8_t *)image_data;
-    while (total_bytes > 0) {
-        int chunk_size = (total_bytes > MAX_SPI_TRANSFER_SIZE) ? MAX_SPI_TRANSFER_SIZE : total_bytes;
-        st7789_write_data(data_ptr, chunk_size);
-        data_ptr += chunk_size;
+    size_t total_bytes = width * height * sizeof(uint16_t); //  计算总字节数
+    const uint8_t *data_ptr = (const uint8_t *)image_data; //  将图像数据指针转换为 uint8_t 类型
+    uint8_t buffer[MAX_SPI_TRANSFER_SIZE];
+    while (total_bytes > 0) { //  循环直到所有字节都被处理
+        int chunk_size = (total_bytes > MAX_SPI_TRANSFER_SIZE) ? MAX_SPI_TRANSFER_SIZE : total_bytes; //  计算当前块的大小
+        int num_pixels = chunk_size / sizeof(uint16_t); //  计算当前块中的像素数量
+        for (int i = 0; i < num_pixels; i++) { //  遍历当前块中的每个像素
+            uint16_t color = ((uint16_t *)data_ptr)[i]; //  获取当前像素的颜色值
+            // // 高低字节交换
+            // uint8_t high_byte = (uint8_t)(color >> 8);
+            // uint8_t low_byte = (uint8_t)(color & 0xFF);
+            // 按位取反
+            buffer[i * 2] = ~(uint8_t)(color >> 8);
+            buffer[i * 2 + 1] = ~(uint8_t)(color & 0xFF);
+        }
+        st7789_write_data(buffer, chunk_size); //  将当前块的数据写入SPI
+        data_ptr += chunk_size; //  更新数据指针和剩余字节数
         total_bytes -= chunk_size;
     }
 }
@@ -316,23 +371,25 @@ void display_image(const uint8_t *data, size_t len) {
 }
 
 //--------------MQTT协议------------------------------------------------
-#define MQTT_URI         "mqtt://192.168.5.64:1883"
-#define MQTT_TOPIC       "6050_date"       // 发送6050数据主题
-#define MQTT_TOPIC_IMAGE "lcd_image"    // 图像数据主题
-#define MQTT_CLIENT_ID   "ESP32_S3_Client" //客户端标识符
-#define MQTT_USERNAME    "mymqtt"
-#define MQTT_PASSWORD    "138248"
+// MQTT 发送任务
+void mqtt_send_task(void *param) {
+    mqtt_payload_t payload;
+    char payload_str[128];
 
-static esp_mqtt_client_handle_t mqtt_client = NULL;
+    while (1) {
+        // 从队列中获取数据
+        if (xQueueReceive(mqtt_queue, &payload, portMAX_DELAY) == pdTRUE) {
+            // 构建 JSON 数据
+            snprintf(payload_str, sizeof(payload_str), 
+                     "{\"angle_x\":%.1f,\"angle_y\":%.1f,\"angle_z\":%.1f}",
+                     payload.angle_x, payload.angle_y, payload.angle_z);
+            printf("%s\n", payload_str);
 
-// 图像数据尺寸：240 * 240，16位RGB（2字节/像素）
-#define IMG_WIDTH   240
-#define IMG_HEIGHT  240
-#define IMG_BPP     2
-#define EXPECTED_IMG_SIZE  (IMG_WIDTH * IMG_HEIGHT * IMG_BPP)
-static uint8_t image_buffer[EXPECTED_IMG_SIZE]; // 图像数据缓存
-static size_t received_bytes = 0; // 已接收字节数
-static bool receiving_image = false; // 接收状态标志
+            // 发送 MQTT 数据
+            esp_mqtt_client_publish(mqtt_client, MQTT_TOPIC, payload_str, 0, 1, 0);
+        }
+    }
+}
 
 // 处理图像数据函数（仅验证数据长度并打印日志，实际显示可在此调用 LCD 接口）
 void process_image_data(const uint8_t *data, size_t len) {
@@ -353,7 +410,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI("MQTT", "MQTT 已连接，准备订阅主题");
-            // 除了原有传感器数据主题外，还订阅图像数据主题
+            // 订阅图像数据主题
             esp_mqtt_client_subscribe(mqtt_client, MQTT_TOPIC_IMAGE, 0);
             break;
 
@@ -408,8 +465,8 @@ void mqtt_app_start() {
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = MQTT_URI,
         .credentials.client_id = MQTT_CLIENT_ID,
-        .credentials.username = MQTT_USERNAME,
-        .credentials.authentication.password = MQTT_PASSWORD,
+        // .credentials.username = MQTT_USERNAME,
+        // .credentials.authentication.password = MQTT_PASSWORD,
         .buffer.size = 40960,      // 设置输入缓冲区大小
     };
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
@@ -417,69 +474,73 @@ void mqtt_app_start() {
     esp_mqtt_client_start(mqtt_client);
 }
 
-//------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------
 void app_main() {
     wifi_init_sta();// wifi-sta
     vTaskDelay(pdMS_TO_TICKS(5000));
     
     // 初始化 ST7789 显示屏
-    st7789_init();             // 包括 GPIO、SPI、复位、颜色模式设置等
-    st7789_clear_screen(0xFFFF); // 清屏为黑色
+    // st7789_init();             // 包括 GPIO、SPI、复位、颜色模式设置等
+    // st7789_clear_screen(0x07E0);// 0x07E0 为浅绿色
+    // vTaskDelay(pdMS_TO_TICKS(1000));
+    
     // st7789_draw_image(firefly_rgb,WIDTH,HEIGHT);
-    mqtt_app_start();// 启动 MQTT
 
     // while (1)
     // {
-    //     vTaskDelay(pdMS_TO_TICKS(1000));
-        // int64_t start_time = esp_timer_get_time(); // 获取开始时间
+    //     vTaskDelay(pdMS_TO_TICKS(5000));
+        // 
         // st7789_draw_image(firefly_rgb,WIDTH,HEIGHT);
         // int64_t end_time = esp_timer_get_time(); // 获取结束时间
-        // int64_t elapsed_time = end_time - start_time; // 计算消耗时间
+        // 
         // printf("代码执行时间: %lld 微秒\n", elapsed_time);  
         // st7789_clear_screen(0x0000); // 清屏为黑色
     // }
     
-
     ESP_LOGI("I2C", "Initializing I2C...");
     i2c_init();
 
     ESP_LOGI("MPU6050", "Initializing MPU6050...");
     mpu6050_init();
 
+    //MQTT初始化
+    mqtt_app_start();
+    // 创建 MQTT 数据队列
+    mqtt_queue = xQueueCreate(MQTT_QUEUE_LENGTH, sizeof(mqtt_payload_t));
+    // 使用队列可以缓存数据，MQTT 任务按顺序逐个发送。
 
-    
-    int16_t accel[3], gyro[3], temp;
-    float accel_scale = 16384.0; // ±2g 灵敏度
+    // 创建 MQTT 发送任务
+    xTaskCreate(mqtt_send_task, "MQTT Task", 4096, NULL, 5, NULL);
+
+    MPUdata gyro,bias;
+    calibrate_gyro(&bias.x, &bias.y, &bias.z); // 校准陀螺仪偏置
+    float angle_x = 90.0, angle_y = 90.0, angle_z = 90.0;
+    const float dt = 0.05; //采样时间间隔/秒
     float gyro_scale = 131.0;    // ±250°/s 灵敏度
+    mqtt_payload_t payload;
 
     while (1) {
-        mpu6050_read_raw(accel, gyro, &temp);
+        int64_t start_time = esp_timer_get_time(); // 获取开始时间
+        read_gyro_data(&gyro.x, &gyro.y, &gyro.z);
+        gyro.x -= bias.x;
+        gyro.y -= bias.y;
+        gyro.z -= bias.z;
 
-        // 转换为实际物理值
-        float ax = accel[0] / accel_scale;
-        float ay = accel[1] / accel_scale;
-        float az = accel[2] / accel_scale;
-        float gx = gyro[0] / gyro_scale;
-        float gy = gyro[1] / gyro_scale;
-        float gz = gyro[2] / gyro_scale;
-        float temp_C = temp / 340.0 + 36.53;
+        // 通过积分计算角度
+        angle_x = calculate_angle(angle_x, gyro.x / gyro_scale, dt);
+        angle_y = calculate_angle(angle_y, gyro.y / gyro_scale, dt);
+        angle_z = calculate_angle(angle_z, gyro.z / gyro_scale, dt);
 
-        // 构建 JSON 数据
-        char payload[128]; // 确保足够的缓冲区
-        snprintf(payload, sizeof(payload),
-                 "{\"accel\":{\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f},"
-                 "\"gyro\":{\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f},"
-                 "\"temp\":%.2f}",
-                 ax, ay, az, gx, gy, gz, temp_C);
-        printf("%s\n",payload);
-        // 发送 MQTT 数据
-        esp_mqtt_client_publish(mqtt_client, MQTT_TOPIC, payload, 0, 1, 0);
+        // 发送到 MQTT 队列
+        payload.angle_x = angle_x;
+        payload.angle_y = angle_y;
+        payload.angle_z = angle_z;
+        xQueueSend(mqtt_queue, &payload, portMAX_DELAY);
 
-        // // 输出日志
-        // ESP_LOGI("MPU6050", "Accel (g): X=%.2f, Y=%.2f, Z=%.2f", ax, ay, az);
-        // ESP_LOGI("MPU6050", "Gyro (°/s): X=%.2f, Y=%.2f, Z=%.2f", gx, gy, gz);
-        // ESP_LOGI("MPU6050", "Temperature: %.2f°C", temp_C);
+        int64_t end_time = esp_timer_get_time(); // 获取结束时间
+        int64_t elapsed_time = end_time - start_time; // 计算消耗时间
+        ESP_LOGI("MY", "代码执行时间: %lld 微秒\n" , elapsed_time);
 
-        vTaskDelay(pdMS_TO_TICKS(1000)); // 50ms 采样间隔
-    }
+        vTaskDelay(pdMS_TO_TICKS(1000*dt)); // 50ms 采样间隔
+    } 
 }
