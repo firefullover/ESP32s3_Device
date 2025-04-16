@@ -3,9 +3,9 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "mpu6050.h"
-#include "wifi_conn.h"
+#include "wifi.h"
 #include "st7789.h"
-#include "mqtt_comm.h"
+#include "mqtt.h"
 
 // 配置参数
 #define WIFI_SSID      "DragonG"
@@ -39,7 +39,7 @@ void app_main(void)
     ESP_LOGI(TAG, "系统启动...");
     
     // WiFi初始化
-    wifi_conn_init(WIFI_SSID, WIFI_PASS, wifi_callback);
+    wifi_init(WIFI_SSID, WIFI_PASS, wifi_callback);
     vTaskDelay(pdMS_TO_TICKS(5000));  // 等待网络连接
 
     // 显示屏初始化
@@ -49,9 +49,7 @@ void app_main(void)
 
     // 传感器初始化
     mpu6050_init();
-    mpu6050_calibrate_gyro(&gyro_bias, 200);
-    ESP_LOGI(TAG, "MPU6050校准完成 X:%d Y:%d Z:%d", 
-            gyro_bias.x, gyro_bias.y, gyro_bias.z);
+    mpu6050_calibrate_gyro(&gyro_bias, 100);  // 校准陀螺仪偏移
 
     // MQTT初始化
     mqtt_comm_init(MQTT_URI, MQTT_CLIENT_ID, display_image_callback);

@@ -1,4 +1,4 @@
-#include "mqtt_comm.h"
+#include "mqtt.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -6,6 +6,8 @@
 static esp_mqtt_client_handle_t client = NULL;
 static QueueHandle_t send_queue = NULL;
 static mqtt_conn_callback_t conn_callback = NULL;
+
+static const char *TAG = "MQTT";
 
 /* 内部函数声明 */
 static void event_handler(void *args, esp_event_base_t base, 
@@ -23,7 +25,7 @@ static size_t img_received = 0;
 void mqtt_comm_init(const char *broker_uri, const char *client_id, mqtt_conn_callback_t conn_cb) {
     // 参数校验
     if (!broker_uri || !client_id) {
-        ESP_LOGE("MQTT", "Invalid parameters");
+        ESP_LOGE(TAG, "Invalid parameters");
         return;
     }
 
@@ -60,14 +62,14 @@ static void event_handler(void *args, esp_event_base_t base,
     
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
-        ESP_LOGI("MQTT", "Connected to broker");
+        ESP_LOGI(TAG, "Connected to broker");
         // 自动订阅图像主题
         esp_mqtt_client_subscribe(client, IMG_TOPIC, 1);
         if (conn_callback) conn_callback(true);
         break;
         
     case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI("MQTT", "Disconnected");
+        ESP_LOGI(TAG, "Disconnected");
         if (conn_callback) conn_callback(false);
         break;
         
@@ -75,7 +77,7 @@ static void event_handler(void *args, esp_event_base_t base,
         // 图像数据处理
         if (strncmp(event->topic, IMG_TOPIC, event->topic_len) == 0) {
             if (img_received + event->data_len > sizeof(img_buffer)) {
-                ESP_LOGE("MQTT", "Image buffer overflow");
+                ESP_LOGE(TAG, "Image buffer overflow");
                 img_received = 0;
                 return;
             }
@@ -84,7 +86,7 @@ static void event_handler(void *args, esp_event_base_t base,
             img_received += event->data_len;
             
             if (img_received >= sizeof(img_buffer)) {
-                ESP_LOGI("MQTT", "Image received, size: %d", img_received);
+                ESP_LOGI(TAG, "Image received, size: %d", img_received);
                 // 此处调用显示接口
                 // display_image(img_buffer, sizeof(img_buffer));
                 img_received = 0;
@@ -121,7 +123,7 @@ static void queue_manager_task(void *arg) {
     while (1) {
         if (xQueueReceive(send_queue, &queue_item, portMAX_DELAY)) {
             if (mqtt_publish(queue_item.topic, queue_item.data, queue_item.len, 1) < 0) {
-                ESP_LOGE("MQTT", "Message dropped: %s", queue_item.topic);
+                ESP_LOGE(TAG, "Message dropped: %s", queue_item.topic);
             }
             free(queue_item.data); // 释放payload内存
         }

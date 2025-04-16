@@ -1,10 +1,10 @@
 idf_component_register(
     SRCS 
         "main.c"
-        "wifi_conn.c"   
+        "wifi.c"   
         "st7789.c"      
-        "mqtt_comm.c"   
-        "mpu6050.c"     
+        "mqtt.c"   
+        "mpu6050.c"       
     INCLUDE_DIRS 
         "."
 )

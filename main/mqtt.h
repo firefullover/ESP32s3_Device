@@ -1,5 +1,5 @@
-#ifndef __MQTT_COMM_H__
-#define __MQTT_COMM_H__
+#ifndef __MQTT_H__
+#define __MQTT_H__
 
 #include "mqtt_client.h"
 #include "freertos/queue.h"
@@ -54,4 +54,4 @@ QueueHandle_t mqtt_get_queue(void);
 }
 #endif
 
-#endif //__MQTT_COMM_H__
+#endif //__MQTT_H__

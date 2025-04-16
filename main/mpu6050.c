@@ -3,19 +3,21 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static i2c_master_bus_handle_t bus_handle = NULL;
-static i2c_master_dev_handle_t dev_handle = NULL;
+static i2c_master_bus_handle_t bus_handle = NULL; // 定义I2C总线句柄和设备句柄
+static i2c_master_dev_handle_t dev_handle = NULL; // 用于存储I2C设备句柄
+
+static const char *TAG = "MPU6050";
 
 static esp_err_t i2c_bus_init(void) 
 {
     // I2C总线配置
     i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = MPU6050_I2C_PORT,
-        .sda_io_num = MPU6050_SDA_PIN,
-        .scl_io_num = MPU6050_SCL_PIN,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true  // 启用内部上拉电阻
+        .i2c_port = MPU6050_I2C_PORT,           //  I2C端口
+        .sda_io_num = MPU6050_SDA_PIN,          //  SDA引脚
+        .scl_io_num = MPU6050_SCL_PIN,          //  SCL引脚
+        .clk_source = I2C_CLK_SRC_DEFAULT,      //  时钟源
+        .glitch_ignore_cnt = 7,                 //  误差忽略计数
+        .flags.enable_internal_pullup = true    // 启用内部上拉电阻
     };
     
     return i2c_new_master_bus(&bus_cfg, &bus_handle);
@@ -40,7 +42,7 @@ void mpu6050_init(void)
     uint8_t wakeup_cmd[] = {0x6B, 0x00};
     ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, wakeup_cmd, sizeof(wakeup_cmd), -1));
     
-    ESP_LOGI("MPU6050", "MPU6050 initialized successfully");
+    ESP_LOGI(TAG, "MPU6050 initialized successfully");
 }
 
 void mpu6050_read_gyro(mpu6050_data_t *data) 
@@ -69,7 +71,7 @@ void mpu6050_calibrate_gyro(mpu6050_data_t *bias, uint16_t samples)
     bias->y = 0;
     bias->z = 0;
 
-    ESP_LOGI("MPU6050", "开始校准，采样次数：%d", samples);
+    ESP_LOGI(TAG, "开始校准，采样次数：%d", samples);
     
     // 采集指定次数的样本
     for (uint16_t i = 0; i < samples; i++) {
@@ -85,7 +87,7 @@ void mpu6050_calibrate_gyro(mpu6050_data_t *bias, uint16_t samples)
     bias->y /= samples;
     bias->z /= samples;
     
-    ESP_LOGI("MPU6050", "校准完成 - X:%d Y:%d Z:%d", bias->x, bias->y, bias->z);
+    ESP_LOGI(TAG, "校准完成 - X:%d Y:%d Z:%d", bias->x, bias->y, bias->z);
 }
 
 float mpu6050_calculate_angle(float prev_angle, float gyro_rate, float dt) 

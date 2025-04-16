@@ -4,7 +4,7 @@
 #include "freertos/task.h"
 
 static const char *TAG = "ST7789";
-static spi_device_handle_t spi_handle = NULL;
+static spi_device_handle_t spi_handle = NULL; //  定义一个spi设备句柄，用于存储spi设备句柄
 
 /* 内部函数声明 */
 static void send_cmd(uint8_t cmd);
@@ -90,6 +90,7 @@ static void send_data(const uint8_t *data, size_t len) {
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
 }
 
+// 设置显示窗口
 static void set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     uint8_t buf[4];
     
@@ -129,12 +130,12 @@ void st7789_fill_screen(uint16_t color) {
 }
 
 void st7789_draw_image(const uint16_t *image_data, uint16_t width, uint16_t height) {
-    set_address_window(0, 0, width-1, height-1);
+    set_address_window(0, 0, width-1, height-1); //  设置地址窗口
 
     const uint8_t *data_ptr = (const uint8_t *)image_data;
     size_t remain = width * height * 2;
     
-    while(remain > 0) {
+    while(remain > 0) { //  循环发送数据，每次发送不超过ST7789_MAX_TRANS_SIZE字节
         size_t send_size = (remain > ST7789_MAX_TRANS_SIZE) ? ST7789_MAX_TRANS_SIZE : remain;
         
         // 处理颜色格式转换
@@ -146,8 +147,8 @@ void st7789_draw_image(const uint16_t *image_data, uint16_t width, uint16_t heig
         }
         
         send_data(buffer, send_size);
-        data_ptr += send_size;
-        remain -= send_size;
+        data_ptr += send_size;   // 指针偏移还未发送的字节数
+        remain -= send_size;     // 记录还剩余的字节数
     }
 }
 
@@ -158,5 +159,5 @@ void st7789_display_raw(const uint8_t *data, size_t len) {
     }
     
     set_address_window(0, 0, ST7789_WIDTH-1, ST7789_HEIGHT-1);
-    send_data(data, len);
+    st7789_draw_image((const uint16_t *)data, ST7789_WIDTH, ST7789_HEIGHT);
 }

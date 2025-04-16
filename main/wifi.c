@@ -1,11 +1,11 @@
-#include "wifi_conn.h"
+#include "wifi.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "WiFiConn";
+static const char *TAG = "WiFi";
 static EventGroupHandle_t s_wifi_event_group;
 static const int WIFI_CONNECTED_BIT = BIT0;
 static wifi_conn_callback_t user_callback = NULL;
@@ -50,7 +50,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-esp_err_t wifi_conn_init(const char *ssid, const char *password, wifi_conn_callback_t callback)
+esp_err_t wifi_init(const char *ssid, const char *password, wifi_conn_callback_t callback)
 {
     // 参数检查
     if(!ssid || !password || strlen(ssid) == 0) {

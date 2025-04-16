@@ -1,5 +1,5 @@
-#ifndef __WIFI_CONN_H__
-#define __WIFI_CONN_H__
+#ifndef __WIFI_H__
+#define __WIFI_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,7 +27,7 @@ typedef void (*wifi_conn_callback_t)(bool connected, const char *ip_addr);
  * @param  callback  连接状态回调函数（可为NULL）
  * @return esp_err_t 错误代码
  */
-esp_err_t wifi_conn_init(const char *ssid, const char *password, wifi_conn_callback_t callback);
+esp_err_t wifi_init(const char *ssid, const char *password, wifi_conn_callback_t callback);
 
 /**
  * @brief  获取当前连接状态
@@ -44,4 +44,4 @@ void wifi_conn_retry(void);
 }
 #endif
 
-#endif //__WIFI_CONN_H__
+#endif //__WIFI_H__
