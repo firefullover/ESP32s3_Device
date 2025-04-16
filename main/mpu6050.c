@@ -20,7 +20,7 @@ static esp_err_t i2c_bus_init(void)
         .flags.enable_internal_pullup = true    // 启用内部上拉电阻
     };
     
-    return i2c_new_master_bus(&bus_cfg, &bus_handle);
+    return i2c_new_master_bus(&bus_cfg, &bus_handle); //  创建I2C总线
 }
 
 void mpu6050_init(void) 

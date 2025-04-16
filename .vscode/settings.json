@@ -19,6 +19,7 @@
         "nvs_flash.h": "c",
         "ioctl.h": "c",
         "fcntl.h": "c",
-        "gpio.h": "c"
+        "gpio.h": "c",
+        "freertos.h": "c"
     }
 }
