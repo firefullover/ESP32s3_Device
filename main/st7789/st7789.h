@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-/* 硬件配置（根据实际接线修改） */
+/* 硬件配置 */
 #define ST7789_SPI_HOST       SPI3_HOST
 #define ST7789_MOSI_PIN       11      // SPI数据线
 #define ST7789_SCLK_PIN       12      // SPI时钟线
@@ -29,7 +29,7 @@ void st7789_init(void);
 
 /**
  * @brief 清屏操作
- * @param color 16位RGB颜色值（高位在前）
+ * @param color 16位RGB颜色值
  */
 void st7789_fill_screen(uint16_t color);
 
@@ -39,10 +39,10 @@ void st7789_fill_screen(uint16_t color);
  * @param width 图像宽度（最大240）
  * @param height 图像高度（最大240）
  */
-void st7789_draw_image(const uint16_t *image_data, uint16_t width, uint16_t height);
+void st7789_draw_image(const uint16_t *image_data);
 
 /**
- * @brief 显示原始图像数据
+ * @brief 校验图像是否符合要求
  * @param data 图像数据指针（需为240x240x2字节）
  * @param len 数据长度（应等于240*240*2）
  */

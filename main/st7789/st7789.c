@@ -65,10 +65,15 @@ void st7789_init(void) {
     ESP_LOGI(TAG, "显示屏初始化完成");
 }
 
+// 静态函数，用于硬件复位
 static void hardware_reset(void) {
+    // 将ST7789_RES_PIN引脚电平设置为0，即低电平
     gpio_set_level(ST7789_RES_PIN, 0);
+    // 延时20毫秒
     vTaskDelay(pdMS_TO_TICKS(20));
+    // 将ST7789_RES_PIN引脚电平设置为1，即高电平
     gpio_set_level(ST7789_RES_PIN, 1);
+    // 延时120毫秒
     vTaskDelay(pdMS_TO_TICKS(120));
 }
 
@@ -109,6 +114,7 @@ static void set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y
     send_cmd(0x2C); // 内存写入命令
 }
 
+// 清屏
 void st7789_fill_screen(uint16_t color) {
     uint8_t color_byte[2];
     color_byte[0] = ~(color >> 8);  // 根据硬件特性取反
@@ -128,12 +134,12 @@ void st7789_fill_screen(uint16_t color) {
         send_data(line_buffer, sizeof(line_buffer));
     }
 }
-
-void st7789_draw_image(const uint16_t *image_data, uint16_t width, uint16_t height) {
-    set_address_window(0, 0, width-1, height-1); //  设置地址窗口
+// 绘制图像
+void st7789_draw_image(const uint16_t *image_data) {
+    set_address_window(0, 0, ST7789_WIDTH-1, ST7789_HEIGHT-1);
 
     const uint8_t *data_ptr = (const uint8_t *)image_data;
-    size_t remain = width * height * 2;
+    size_t remain = ST7789_WIDTH * ST7789_HEIGHT * 2;
     
     while(remain > 0) { //  循环发送数据，每次发送不超过ST7789_MAX_TRANS_SIZE字节
         size_t send_size = (remain > ST7789_MAX_TRANS_SIZE) ? ST7789_MAX_TRANS_SIZE : remain;
@@ -154,10 +160,8 @@ void st7789_draw_image(const uint16_t *image_data, uint16_t width, uint16_t heig
 
 void st7789_display_raw(const uint8_t *data, size_t len) {
     if(len != ST7789_WIDTH * ST7789_HEIGHT * 2) {
-        ESP_LOGE(TAG, "无效数据长度: %d (需要 %d)", len, ST7789_WIDTH*ST7789_HEIGHT*2);
+        ESP_LOGE(TAG, "数据长度不符号,当前数据长度为%d",len);
         return;
     }
-    
-    set_address_window(0, 0, ST7789_WIDTH-1, ST7789_HEIGHT-1);
-    st7789_draw_image((const uint16_t *)data, ST7789_WIDTH, ST7789_HEIGHT);
+    st7789_draw_image((const uint16_t *)data);
 }
