@@ -92,12 +92,16 @@ void mpu6050_calibrate_gyro(mpu6050_data_t *bias, uint16_t samples)
 
 float mpu6050_calculate_angle(float prev_angle, float gyro_rate, float dt) 
 {
-    /* 
-     * 简单积分计算角度变化
-     * 注意：实际应用需考虑温度漂移和积分误差累积
-     * 参数：
-     *   gyro_rate - 角速度（度/秒）
-     *   dt        - 时间间隔（秒）
-     */
-    return prev_angle + (gyro_rate * dt);
-}   
+    float new_angle = prev_angle + (gyro_rate * dt);
+    // 当积分值小于2时，不计入此次积分
+    if (fabsf(new_angle - prev_angle) < 2) {
+        return prev_angle;
+    }
+    // 输出的结果限定在0~180
+    if (new_angle < 0) {
+        return 0;
+    } else if (new_angle > 180) {
+        return 180;
+    }
+    return new_angle;
+}

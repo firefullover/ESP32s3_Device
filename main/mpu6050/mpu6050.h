@@ -14,6 +14,7 @@ extern "C" {
 #define MPU6050_SDA_PIN         1       // I2C数据线引脚
 #define MPU6050_SCL_PIN         0       // I2C时钟线引脚
 #define MPU6050_CLK_SPEED_HZ    100000  // I2C通信频率(100kHz)
+#define GYRO_SCALE     131.0f  // ±250dps灵敏度
 
 /**
  * @brief 陀螺仪原始数据结构体

@@ -13,7 +13,7 @@
 #define MQTT_URI       "mqtt://192.168.5.109:1883"
 #define MQTT_CLIENT_ID "esp32s3_Client"
 #define SAMPLING_MS    50
-#define GYRO_SCALE     131.0f  // ±250dps灵敏度
+
 
 static const char *TAG = "Main";
 static mpu6050_data_t gyro_bias;
@@ -56,7 +56,7 @@ void app_main(void)
     ESP_LOGI(TAG, "MQTT客户端已启动");
 
     // 主循环变量
-    float angles[3] = {0};  // X/Y/Z轴角度
+    float angles[2] = {90.0f,90.0f};  // X/Y/Z轴角度
     int64_t last_time = esp_timer_get_time();
 
     while (1) {
@@ -66,10 +66,11 @@ void app_main(void)
         
         // 计算角度变化
         float dt = (esp_timer_get_time() - last_time) / 1e6;
-        angles[0] += (raw.x - gyro_bias.x) / GYRO_SCALE * dt;
-        angles[1] += (raw.y - gyro_bias.y) / GYRO_SCALE * dt;
-        angles[2] += (raw.z - gyro_bias.z) / GYRO_SCALE * dt;
+        angles[0] = mpu6050_calculate_angle(angles[0], (raw.y - gyro_bias.y) / GYRO_SCALE , dt);
+        angles[1] = mpu6050_calculate_angle(angles[1], (raw.z - gyro_bias.z) / GYRO_SCALE , dt);
         last_time = esp_timer_get_time();
+
+        printf("Y: %.2f, Z: %.2f\n", angles[0], angles[1]);
 
         // 发送MQTT数据
         char payload[64];
