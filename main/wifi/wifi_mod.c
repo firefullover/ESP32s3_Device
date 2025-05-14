@@ -4,11 +4,12 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "config.h"
 
 static const char *TAG = "WiFi_STA";
 
 // Wi-Fi 事件处理函数
-static void wifi_event_handler(void *arg, esp_event_base_t event_base,int32_t event_id, void *event_data) {
+void wifi_event_handler(void *arg, esp_event_base_t event_base,int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT) {  // 如果是 Wi-Fi 事件
         if (event_id == WIFI_EVENT_STA_START) {   // Wi-Fi 站点启动事件
             ESP_LOGI(TAG, "STA 启动");
@@ -26,17 +27,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,int32_t ev
 }
 
 // STA 模式初始化
-void wifi_init(const char *ssid, const char *password) {
-    // 参数检查
-    if(!ssid || !password || strlen(ssid) == 0) {
-        ESP_LOGE(TAG, "无效的SSID或密码");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    // 保存配置
-    strncpy(configured_ssid, ssid, sizeof(configured_ssid)-1);
-    strncpy(configured_pass, password, sizeof(configured_pass)-1);
-
+void wifi_init() {
     // 初始化 NVS
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
@@ -56,8 +47,8 @@ void wifi_init(const char *ssid, const char *password) {
     // 配置 STA 参数
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = ssid,
-            .password = password,
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASS,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         }
     };

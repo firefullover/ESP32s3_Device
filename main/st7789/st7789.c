@@ -2,6 +2,7 @@
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "config.h"
 
 static const char *TAG = "ST7789";
 static spi_device_handle_t spi_handle = NULL; //  定义一个spi设备句柄，用于存储spi设备句柄

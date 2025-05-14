@@ -2,6 +2,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "config.h"
+#include <math.h>
 
 static i2c_master_bus_handle_t bus_handle = NULL; // 定义I2C总线句柄和设备句柄
 static i2c_master_dev_handle_t dev_handle = NULL; // 用于存储I2C设备句柄

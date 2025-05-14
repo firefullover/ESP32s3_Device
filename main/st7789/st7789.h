@@ -8,18 +8,6 @@
 extern "C" {
 #endif
 
-/* 硬件配置 */
-#define ST7789_SPI_HOST       SPI3_HOST
-#define ST7789_MOSI_PIN       11      // SPI数据线
-#define ST7789_SCLK_PIN       12      // SPI时钟线
-#define ST7789_RES_PIN        6       // 复位引脚
-#define ST7789_DC_PIN         7       // 数据/命令控制引脚
-#define ST7789_PIXEL_FORMAT   0x55    // 16-bit RGB565
-#define ST7789_MAX_TRANS_SIZE 4096    // SPI单次传输最大字节数
-
-/* 屏幕参数 */
-#define ST7789_WIDTH          240
-#define ST7789_HEIGHT         240
 
 /**
  * @brief  初始化ST7789显示屏

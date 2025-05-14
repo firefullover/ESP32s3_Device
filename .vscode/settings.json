@@ -20,6 +20,10 @@
         "ioctl.h": "c",
         "fcntl.h": "c",
         "gpio.h": "c",
-        "freertos.h": "c"
+        "freertos.h": "c",
+        "config.h": "c",
+        "task.h": "c",
+        "math.h": "c",
+        "esp_log.h": "c"
     }
 }

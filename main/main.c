@@ -2,61 +2,54 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "config.h"
 #include "mpu6050.h"
-#include "wifi.h"
+#include "wifi_mod.h"
 #include "st7789.h"
 #include "mqtt.h"
 
-// 配置参数
-#define WIFI_SSID      "DragonG"
-#define WIFI_PASS      "lrt13729011089"
-#define MQTT_URI       "mqtt://192.168.5.109:1883"
-#define MQTT_CLIENT_ID "esp32s3_Client"
-#define SAMPLING_MS    50
-
-
-static const char *TAG = "Main";
+static const char *TAG = "APP_Main";
 static mpu6050_data_t gyro_bias;
 
-// WiFi连接状态回调
-void wifi_callback(bool connected, const char *ip) {
+// MQTT连接状态回调
+static void mqtt_connection_callback(bool connected) {
     if(connected) {
-        ESP_LOGI(TAG, "已连接WiFi，IP地址: %s", ip);
+        ESP_LOGI(TAG, "MQTT已连接到服务器");
     } else {
-        ESP_LOGI(TAG, "WiFi连接丢失");
+        ESP_LOGI(TAG, "MQTT连接断开");
     }
 }
 
-// MQTT图像接收处理
-static void display_image_callback(const uint8_t *data, size_t len) {
-    st7789_display_raw(data, len);
-    ESP_LOGI(TAG, "已刷新显示屏图像");
-}
+// // MQTT图像接收处理
+// static void display_image_callback(const uint8_t *data, size_t len) {
+//     st7789_display_raw(data, len);
+//     ESP_LOGI(TAG, "已刷新显示屏图像");
+// }
 
-void app_main(void)
-{
-    // 初始化各模块
-    ESP_LOGI(TAG, "系统启动...");
-    
+void app_main(void) {
     // WiFi初始化
-    wifi_init(WIFI_SSID, WIFI_PASS, wifi_callback);
-    vTaskDelay(pdMS_TO_TICKS(5000));  // 等待网络连接
+    wifi_init();
+    ESP_LOGI(TAG, "等待网络连接...");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    // MQTT初始化
+    mqtt_comm_init(mqtt_connection_callback);
+    ESP_LOGI(TAG, "等待MQTT连接...");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    while(1) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
 
     // 显示屏初始化
     st7789_init();
-    st7789_fill_screen(0x0000);  // 初始黑屏
-    ESP_LOGI(TAG, "显示屏初始化完成");
+    st7789_fill_screen(0xFFFF);  // 初始化时填充白色
 
     // 传感器初始化
     mpu6050_init();
     mpu6050_calibrate_gyro(&gyro_bias, 100);  // 校准陀螺仪偏移
 
-    // MQTT初始化
-    mqtt_comm_init(MQTT_URI, MQTT_CLIENT_ID, display_image_callback);
-    ESP_LOGI(TAG, "MQTT客户端已启动");
-
-    // 主循环变量
-    float angles[2] = {90.0f,90.0f};  // X/Y/Z轴角度
+    float angles[2] = {90.0f,90.0f};  // Y/Z轴角度
     int64_t last_time = esp_timer_get_time();
 
     while (1) {
@@ -75,10 +68,10 @@ void app_main(void)
         // 发送MQTT数据
         char payload[64];
         snprintf(payload, sizeof(payload), 
-                "{\"x\":%.2f,\"y\":%.2f,\"z\":%.2f}", 
-                angles[0], angles[1], angles[2]);
-        mqtt_publish("6050_data", payload, strlen(payload), 1);
+                "{\"y\":%.2f,\"z\":%.2f}", 
+                angles[0], angles[1]);
+        mqtt_publish(MQTT_TOPIC, payload, strlen(payload), 1);
 
-        vTaskDelay(pdMS_TO_TICKS(SAMPLING_MS));
+        vTaskDelay(pdMS_TO_TICKS(100));// 延时100ms（0.1s）
     }
 }
