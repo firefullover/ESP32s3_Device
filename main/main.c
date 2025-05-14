@@ -24,8 +24,8 @@ static i2c_master_bus_handle_t bus_handle;  // I2C 总线句柄
 static i2c_master_dev_handle_t dev_handle;  // MPU6050 设备句柄
 
 // WiFi 配置
-#define WIFI_SSID_STA      "DragonG"
-#define WIFI_PASS_STA      "lrt13729011089"
+#define WIFI_SSID_STA      "USER_E36498"
+#define WIFI_PASS_STA      "XX687722@"
 
 // ST7789 相关
 #define MOSI_PIN GPIO_NUM_11    // SPI MOSI (SDA)
@@ -505,6 +505,10 @@ void app_main() {
 
     //MQTT初始化
     mqtt_app_start();
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
     // 创建 MQTT 数据队列
     mqtt_queue = xQueueCreate(MQTT_QUEUE_LENGTH, sizeof(mqtt_payload_t));
     // 使用队列可以缓存数据，MQTT 任务按顺序逐个发送。
