@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "../st7789/st7789.h"
 #include "config.h"
 
 static esp_mqtt_client_handle_t client = NULL;
@@ -39,6 +40,7 @@ static void event_handler(void *args, esp_event_base_t base,
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "Connected to MQTT broker");
+        if (conn_callback) conn_callback(true);// 调用回调函数        
         // 自动订阅图像主题
         esp_mqtt_client_subscribe(client, IMG_TOPIC, 1);
         break;
@@ -48,22 +50,25 @@ static void event_handler(void *args, esp_event_base_t base,
         break;
         
     case MQTT_EVENT_DATA:
-        // 图像数据处理
+        // 判断收到的数据主题是否为图像主题
         if (strncmp(event->topic, IMG_TOPIC, event->topic_len) == 0) {
+            // 检查接收的图像数据是否会导致缓冲区溢出
             if (img_received + event->data_len > sizeof(img_buffer)) {
                 ESP_LOGE(TAG, "Image buffer overflow");
-                img_received = 0;
+                img_received = 0; // 溢出时重置接收计数
                 return;
             }
             
+            // 将接收到的数据拷贝到图像缓冲区
             memcpy(img_buffer + img_received, event->data, event->data_len);
-            img_received += event->data_len;
+            img_received += event->data_len; // 更新已接收数据长度
             
+            // 如果已接收的数据达到一帧图像的大小
             if (img_received >= sizeof(img_buffer)) {
                 ESP_LOGI(TAG, "Image received, size: %d", img_received);
-                // 此处调用显示接口
-                // display_image(img_buffer, sizeof(img_buffer));
-                img_received = 0;
+                // 调用显示屏接口显示图像
+                st7789_display_raw(img_buffer, sizeof(img_buffer));
+                img_received = 0; // 显示后重置接收计数，准备接收下一帧
             }
         }
         break;

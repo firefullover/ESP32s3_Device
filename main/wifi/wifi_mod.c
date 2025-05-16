@@ -8,14 +8,16 @@
 
 static const char *TAG = "WiFi_STA";
 
+static wifi_conn_callback_t s_user_callback = NULL;
+
 // Wi-Fi 事件处理函数
 void wifi_event_handler(void *arg, esp_event_base_t event_base,int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT) {  // 如果是 Wi-Fi 事件
         if (event_id == WIFI_EVENT_STA_START) {   // Wi-Fi 站点启动事件
-            ESP_LOGI(TAG, "STA 启动");
+            ESP_LOGI(TAG, "STA 模式启动");
             esp_wifi_connect();   // 连接 Wi-Fi
         } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {   // Wi-Fi 断开连接事件
-            ESP_LOGI(TAG, "已断开 Wi-Fi 连接，正在重新连接...");
+            ESP_LOGI(TAG, "已断开 Wi-Fi 连接，正在尝试重新连接...");
             esp_wifi_connect();   // 尝试重新连接 Wi-Fi
         }
     } else if (event_base == IP_EVENT) {   // 如果是 IP 事件
@@ -23,11 +25,15 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base,int32_t event_id,
             ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;  // 获取 IP 信息
             ESP_LOGI(TAG, "Wifi连接，已获取到 IP 地址: " IPSTR, IP2STR(&event->ip_info.ip));  // 打印 IP 地址
         }
+        if (s_user_callback) { // 调用回调函数
+            s_user_callback();
+        }
     }
 }
 
 // STA 模式初始化
-void wifi_init() {
+void wifi_init(wifi_conn_callback_t callback) {
+    s_user_callback = callback;
     // 初始化 NVS
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
