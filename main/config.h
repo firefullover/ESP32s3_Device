@@ -10,11 +10,11 @@ extern "C" {
 #define WIFI_PASS      "XX687722@"
 
 /* MQTT配置 */
-#define MQTT_URI       "mqtt://192.168.50.130:1883"
+#define MQTT_URI       "mqtt://192.168.1.95:1883"
 #define MQTT_CLIENT_ID "esp32s3_Client"
 #define MQTT_RX_BUFFER_SIZE      8192 // 接收缓冲区大小
 #define MQTT_RECONNECT_INTERVAL  10 // 重连间隔（秒）
-#define MQTT_TOPIC       "6818_date"       // 发送6050数据主题
+#define MQTT_TOPIC       "6050_date"       // 发送6050数据主题
 
 /* 图像处理参数 */
 #define IMG_TOPIC        "6818_image"

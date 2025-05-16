@@ -44,7 +44,7 @@ void mpu6050_init(void)
     uint8_t wakeup_cmd[] = {0x6B, 0x00};
     ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, wakeup_cmd, sizeof(wakeup_cmd), -1));
     
-    ESP_LOGI(TAG, "MPU6050 initialized successfully");
+    ESP_LOGI(TAG, "MPU6050 初始化完成");
 }
 
 void mpu6050_read_gyro(mpu6050_data_t *data) 
@@ -89,17 +89,18 @@ void mpu6050_calibrate_gyro(mpu6050_data_t *bias, uint16_t samples)
     bias->y /= samples;
     bias->z /= samples;
     
-    ESP_LOGI(TAG, "校准完成 - X:%d Y:%d Z:%d", bias->x, bias->y, bias->z);
+    // ESP_LOGI(TAG, "校准完成 - X:%d Y:%d Z:%d", bias->x, bias->y, bias->z);
+    ESP_LOGI(TAG, "校准完成");
 }
 
 float mpu6050_calculate_angle(float prev_angle, float gyro_rate, float dt) 
 {
-    float new_angle = prev_angle + (gyro_rate * dt);
-    // 当积分值小于2时，不计入此次积分
+    float new_angle = prev_angle + ((gyro_rate / GYRO_SCALE) * dt);
+    // 当积分值小于2时，不计入此次积分(防抖动)
     if (fabsf(new_angle - prev_angle) < 2) {
         return prev_angle;
     }
-    // 输出的结果限定在0~180
+    // 输出的结果限定在0~180，防止角度越界
     if (new_angle < 0) {
         return 0;
     } else if (new_angle > 180) {

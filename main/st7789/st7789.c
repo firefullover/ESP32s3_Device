@@ -135,6 +135,7 @@ void st7789_fill_screen(uint16_t color) {
         send_data(line_buffer, sizeof(line_buffer));
     }
 }
+
 // 绘制图像
 void st7789_draw_image(const uint16_t *image_data) {
     set_address_window(0, 0, ST7789_WIDTH-1, ST7789_HEIGHT-1);
